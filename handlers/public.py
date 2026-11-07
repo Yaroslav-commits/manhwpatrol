@@ -25,7 +25,8 @@ async def cmd_start(msg: Message):
          views.btn(f"{fb('user')} Мой профиль", "pme", icon="user")],
         [views.btn(f"{fb('gift')} Призы", "pprizes", icon="gift"),
          views.btn(f"{fb('history')} Зал славы", "pwinners", icon="history")],
-        [views.btn(f"{fb('card')} Открыть ManhwCard", url=views.mc_url(), icon="card")],
+        [views.btn(f"{fb('chat')} Чат", url=views.chat_url(), icon="chat"),
+         views.btn(f"{fb('card')} ManhwCard", url=views.mc_url(), icon="card")],
     )
     await msg.answer(views.help_view(), reply_markup=markup)
 

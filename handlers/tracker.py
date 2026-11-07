@@ -7,7 +7,8 @@ from aiogram.types import ChatMemberUpdated, Message
 
 import db
 import stats
-from config import ADMIN_IDS
+from chat_guard import leave_foreign
+from config import CHAT_ID, CHAT_USERNAME
 from counter import COUNTER
 from emojis import e
 
@@ -20,20 +21,18 @@ async def on_bot_added(ev: ChatMemberUpdated, bot: Bot):
     old, new = ev.old_chat_member.status, ev.new_chat_member.status
     if old not in ("left", "kicked") or new not in ("member", "administrator"):
         return
-    by_admin = ev.from_user and ev.from_user.id in ADMIN_IDS
-    if by_admin and not db.is_tracked(ev.chat.id):
-        db.track(ev.chat.id, ev.chat.title, ev.from_user.id)
-        db.log(ev.from_user.id, "track", f"{ev.chat.id} {ev.chat.title} (авто)")
-    tracked = db.is_tracked(ev.chat.id)
+    if ev.chat.id != CHAT_ID:
+        try:
+            await bot.send_message(ev.chat.id, f"{e('lock')} ManhwPatrol работает только в @{CHAT_USERNAME}. "
+                                               f"Ухожу отсюда — заглядывайте к нам!")
+        except Exception:
+            pass
+        await leave_foreign(bot, ev.chat.id)
+        return
     text = (f"{e('patrol')} <b>ManhwPatrol на посту!</b>\n\n"
             f"Я считаю активность чата: кто больше пишет — тот поднимается в топе, а топ-3 недели "
-            f"получают {e('diamond')} алмазы и {e('attempts')} крутки в ManhwCard.\n\n")
-    if tracked:
-        text += f"{e('check')} Подсчёт <b>включён</b>. Команды: /top · /me · /prizes"
-    else:
-        text += (f"{e('lock')} Подсчёт пока выключен — администратор бота должен написать здесь /track.\n"
-                 f"<i>Не забудьте выключить Privacy Mode у бота в @BotFather или сделать его админом чата, "
-                 f"иначе я не вижу сообщения.</i>")
+            f"получают {e('diamond')} алмазы и {e('attempts')} крутки в ManhwCard.\n\n"
+            f"{e('check')} Подсчёт <b>включён</b>. Команды: /top · /me · /prizes")
     try:
         await bot.send_message(ev.chat.id, text)
     except Exception:

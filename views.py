@@ -5,7 +5,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import db
 import stats
-from config import MANHWCARD_USERNAME
+from config import CHAT_USERNAME, MANHWCARD_USERNAME
 from counter import COUNTER
 from emojis import e, eid, fb
 from stats import num
@@ -31,6 +31,10 @@ def btn(text, cb=None, url=None, icon=None, style=None):
 
 def kb(*rows):
     return InlineKeyboardMarkup(inline_keyboard=[list(r) for r in rows if r])
+
+
+def chat_url():
+    return f"https://t.me/{CHAT_USERNAME}"
 
 
 def mc_url():
@@ -281,7 +285,7 @@ def help_view():
     return "\n".join([
         f"{e('patrol')} <b>ManhwPatrol</b> — патруль активности чата",
         LINE,
-        "Я считаю, кто сколько пишет в чате, и каждую неделю определяю "
+        f"Я считаю, кто сколько пишет в @{CHAT_USERNAME}, и каждую неделю определяю "
         f"самых активных — топ-3 получают <b>алмазы {e('diamond')} и крутки {e('attempts')}</b> в "
         f"@{MANHWCARD_USERNAME}.",
         "",

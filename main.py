@@ -13,7 +13,8 @@ from aiogram.types import (BotCommand, BotCommandScopeAllGroupChats,
 
 import db
 import rewards
-from config import ADMIN_IDS, BOT_TOKEN
+from chat_guard import ChatGuard
+from config import ADMIN_IDS, BOT_TOKEN, CHAT_ID, CHAT_USERNAME
 from counter import COUNTER
 from handlers import admin, public, tracker
 
@@ -39,7 +40,7 @@ ADMIN_COMMANDS = PUBLIC_COMMANDS + [
 
 async def set_commands(bot: Bot):
     try:
-        await bot.set_my_commands(PUBLIC_COMMANDS, scope=BotCommandScopeAllGroupChats())
+        await bot.set_my_commands(PUBLIC_COMMANDS, scope=BotCommandScopeChat(chat_id=CHAT_ID))
         await bot.set_my_commands(PUBLIC_COMMANDS, scope=BotCommandScopeAllPrivateChats())
         for aid in ADMIN_IDS:
             try:
@@ -56,12 +57,21 @@ async def main():
 
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML", link_preview_is_disabled=True))
     dp = Dispatcher()
+    # Замок: только @chatmanhwcard и личка
+    guard = ChatGuard()
+    dp.message.outer_middleware(guard)
+    dp.callback_query.outer_middleware(guard)
     # Порядок важен: команды раньше счётчика
     dp.include_router(admin.router)
     dp.include_router(public.router)
     dp.include_router(tracker.router)
 
     await set_commands(bot)
+    try:
+        chat = await bot.get_chat(CHAT_ID)
+        logging.info(f"💬 Чат патруля: {chat.title} (@{CHAT_USERNAME})")
+    except Exception as ex:
+        logging.warning(f"⚠️ Бот не видит чат {CHAT_ID} (@{CHAT_USERNAME}): {ex} — добавьте его в чат")
     tasks = [asyncio.create_task(rewards.scheduler(bot)), asyncio.create_task(rewards.flusher())]
     try:
         await dp.start_polling(bot, allowed_updates=["message", "callback_query", "my_chat_member"])

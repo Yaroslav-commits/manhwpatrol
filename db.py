@@ -4,7 +4,7 @@ import os
 import sqlite3
 import time
 
-from config import DB_PATH, DEFAULTS
+from config import CHAT_ID, DB_PATH, DEFAULTS
 
 _conn: sqlite3.Connection | None = None
 
@@ -79,6 +79,8 @@ def init():
     c.commit()
     if get_meta("installed_at") is None:
         set_meta("installed_at", str(int(time.time())))
+    if get_meta("tracking_since") is None:
+        set_meta("tracking_since", get_meta("installed_at"))
     _load_settings()
 
 
@@ -121,36 +123,13 @@ def log(admin_id, action, details=""):
         (admin_id, action, str(details)[:500], int(time.time())))
 
 
-# ─── чаты ───
+# ─── чат (один, задан в config.CHAT_ID) ───
 def tracked_chats() -> list[int]:
-    return [r[0] for r in q("SELECT chat_id FROM chats")]
+    return [CHAT_ID]
 
 
 def is_tracked(chat_id) -> bool:
-    return chat_id in _tracked_cache()
-
-
-_TRACKED = {"ids": None}
-
-
-def _tracked_cache():
-    if _TRACKED["ids"] is None:
-        _TRACKED["ids"] = set(tracked_chats())
-    return _TRACKED["ids"]
-
-
-def track(chat_id, title, by):
-    exe("INSERT INTO chats (chat_id, title, added_by, added_at) VALUES (?, ?, ?, ?) "
-        "ON CONFLICT(chat_id) DO UPDATE SET title = excluded.title", (chat_id, title, by, int(time.time())))
-    if get_meta("tracking_since") is None:
-        set_meta("tracking_since", str(int(time.time())))
-    _TRACKED["ids"] = None
-
-
-def untrack(chat_id) -> bool:
-    n = exe("DELETE FROM chats WHERE chat_id = ?", (chat_id,))
-    _TRACKED["ids"] = None
-    return n > 0
+    return chat_id == CHAT_ID
 
 
 # ─── исключённые из топа ───

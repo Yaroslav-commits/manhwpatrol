@@ -20,7 +20,7 @@ import db
 import rewards
 import stats
 import views
-from config import ADMIN_IDS, DB_PATH
+from config import ADMIN_IDS, CHAT_ID, CHAT_USERNAME, DB_PATH
 from counter import COUNTER, Counter
 from emojis import e
 from stats import num
@@ -41,9 +41,7 @@ HELP = (
     f"{e('shield')} <b>АДМИН-ПАНЕЛЬ ManhwPatrol</b>\n{LINE}\n"
     "<i>Цель — ID, @username или ответ на сообщение.</i>\n\n"
     f"{e('chat')} <b>Чаты</b>\n<blockquote expandable>"
-    "/track — считать сообщения в этом чате\n"
-    "/untrack — перестать считать\n"
-    "/chats — список отслеживаемых чатов\n"
+    "/chats — чат патруля и статус бота в нём\n"
     "/say текст — объявление во все чаты"
     "</blockquote>\n"
     f"{e('gift')} <b>Призы и правила</b>\n<blockquote expandable>"
@@ -99,38 +97,20 @@ async def cmd_padmin(msg: Message):
 
 
 # ═══════════════ ЧАТЫ ═══════════════
-@router.message(Command("track"), F.chat.type.in_({"group", "supergroup"}))
-async def cmd_track(msg: Message):
-    db.track(msg.chat.id, msg.chat.title, msg.from_user.id)
-    db.log(msg.from_user.id, "track", f"{msg.chat.id} {msg.chat.title}")
-    await msg.answer(f"{e('check')} <b>Патруль заступил на смену!</b>\n"
-                     f"Считаю сообщения в «{escape(msg.chat.title or '')}». Топ: /top · Призы: /prizes")
-
-
-@router.message(Command("untrack"), F.chat.type.in_({"group", "supergroup"}))
-async def cmd_untrack(msg: Message):
-    if db.untrack(msg.chat.id):
-        db.log(msg.from_user.id, "untrack", str(msg.chat.id))
-        await msg.answer(f"{e('lock')} Подсчёт в этом чате остановлен. Статистика сохранена.")
-    else:
-        await msg.answer("Этот чат и так не отслеживается.")
-
-
-@router.message(Command("track", "untrack"))
-async def cmd_track_private(msg: Message):
-    await msg.answer("Эту команду нужно написать в самом чате.")
-
-
-@router.message(Command("chats"))
-async def cmd_chats(msg: Message):
-    rows = db.q("SELECT chat_id, title, added_at FROM chats")
-    if not rows:
-        return await msg.answer("Чатов нет. Добавьте бота в чат и напишите там /track.")
-    lines = [f"{e('chat')} <b>Отслеживаемые чаты</b>", LINE]
-    for cid, title, at in rows:
-        lines.append(f"• {escape(title or '—')} <code>{cid}</code> · с "
-                     f"{datetime.fromtimestamp(at or 0, stats.TZ):%d.%m.%Y}")
-    await msg.answer("\n".join(lines))
+@router.message(Command("chats", "track", "untrack"))
+async def cmd_chats(msg: Message, bot: Bot):
+    try:
+        chat = await bot.get_chat(CHAT_ID)
+        title = escape(chat.title or "—")
+        me = await bot.get_me()
+        member = await bot.get_chat_member(CHAT_ID, me.id)
+        status = {"administrator": "🟢 админ", "member": "🟢 участник"}.get(member.status, f"🔴 {member.status}")
+    except Exception as ex:
+        title, status = "—", f"🔴 бот не в чате ({escape(str(ex))[:80]})"
+    await msg.answer(f"{e('chat')} <b>Чат патруля</b>\n{LINE}\n"
+                     f"{title} · @{CHAT_USERNAME} · <code>{CHAT_ID}</code>\n"
+                     f"Статус бота: {status}\n\n"
+                     f"<i>Бот работает только в этом чате. Сменить чат — переменная PATROL_CHAT_ID.</i>")
 
 
 @router.message(Command("say"))
@@ -438,7 +418,7 @@ async def cmd_pstatus(msg: Message):
     total = stats.chat_totals("all")[0]
     lines = [
         f"{e('settings')} <b>СОСТОЯНИЕ</b>", LINE,
-        f"💬 Отслеживаемых чатов: <b>{len(db.tracked_chats())}</b>",
+        f"💬 Чат: @{CHAT_USERNAME} <code>{CHAT_ID}</code>",
         f"👥 Игроков в базе: <b>{num(users)}</b> · сообщений: <b>{num(total)}</b>",
         f"🧮 В буфере: {sum(v[0] for v in COUNTER.buf.values())}",
         f"🏁 Последняя неделя: {last[0] + ' · ' + last[1] if last else '—'}",
