@@ -17,11 +17,10 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, FSInputFile, Message
 
 import db
-import manhwcard
 import rewards
 import stats
 import views
-from config import ADMIN_IDS, DB_PATH, MANHWCARD_DB_PATH
+from config import ADMIN_IDS, DB_PATH
 from counter import COUNTER, Counter
 from emojis import e
 from stats import num
@@ -63,11 +62,10 @@ HELP = (
     "/resetweek цель — обнулить игроку текущую неделю"
     "</blockquote>\n"
     f"{e('trophy')} <b>Итоги и награды</b>\n<blockquote expandable>"
+    "/pending — ведомость: победители + готовые команды ManhwCard, кнопки «✅ Выдал»\n"
+    "/done ID — отметить награду выданной · /voidreward ID — отменить\n"
     "/preview — кто получит призы, если подвести итоги сейчас\n"
-    "/finishweek — подвести итоги прошлой недели вручную (если бот был выключен)\n"
-    "/pending — невыданные награды · /retry — выдать их сейчас\n"
-    "/voidreward ID — отменить награду\n"
-    "/giftp цель алмазы крутки [причина] — разовая награда в ManhwCard"
+    "/finishweek — подвести итоги прошлой недели вручную (если бот был выключен)"
     "</blockquote>\n"
     f"{e('settings')} <b>Система</b>\n<blockquote expandable>"
     "/import — загрузить историю чата (JSON из Telegram Desktop)\n"
@@ -240,8 +238,6 @@ async def cmd_pinfo(msg: Message, command: CommandObject):
     extra = [
         "", f"{e('shield')} <b>Для админа</b>",
         f"🆔 <code>{uid}</code>" + (f" · @{escape(u[0])}" if u and u[0] else ""),
-        f"🎴 ManhwCard: {'✅ зарегистрирован' if manhwcard.user_exists(uid) else '❌ не найден'}"
-        + (" · 🚫 забанен" if manhwcard.is_banned(uid) else ""),
     ]
     if u and u[1]:
         extra.append(f"👁 Впервые: {datetime.fromtimestamp(u[1], stats.TZ):%d.%m.%Y} · последний раз: "
@@ -327,7 +323,7 @@ async def cmd_preview(msg: Message):
     COUNTER.flush()
     a, b = stats.period_range("week")
     winners = rewards.pick_winners(a, b)
-    results = [(i, uid, m, "paid") for i, (uid, m) in enumerate(winners, 1)]
+    results = [(i, uid, m) for i, (uid, m) in enumerate(winners, 1)]
     tm, au = stats.chat_totals("week")
     await msg.answer(f"{e('target')} <b>ПРЕДПРОСМОТР</b> — так выглядели бы итоги прямо сейчас "
                      f"(ничего не выдано)\n\n" + rewards.results_text(a, b, results, tm, au))
@@ -348,7 +344,7 @@ async def cmd_finishweek(msg: Message):
     w = rewards.pick_winners(a, b)
     nm = stats.names([u for u, _ in w])
     body = "\n".join(f"{views.medal(i)} {nm[u]} — {num(m)} → {views.prize_txt(i)}" for i, (u, m) in enumerate(w, 1))
-    await msg.answer(f"{e('alarm')} Подвести итоги недели <b>{stats.fmt_range(a, b)}</b> и выдать призы?\n\n"
+    await msg.answer(f"{e('alarm')} Подвести итоги недели <b>{stats.fmt_range(a, b)}</b>? В чат уйдёт пост, вам — ведомость выдачи.\n\n"
                      f"{body or '<i>победителей нет</i>'}",
                      reply_markup=kb([btn("✅ Подвести", f"pfin:{token}"), btn("❌ Отмена", f"pfinx:{token}")]))
 
@@ -368,85 +364,87 @@ async def cb_finish(cq: CallbackQuery, bot: Bot):
     await cq.answer()
 
 
-@router.message(Command("pending"))
+@router.message(Command("pending", "payouts"))
 async def cmd_pending(msg: Message):
-    rows = db.q("SELECT id, week_key, place, user_id, diamonds, attempts, status, note FROM rewards "
-                "WHERE status IN ('pending', 'error', 'new') ORDER BY id")
-    if not rows:
-        return await msg.answer(f"{e('check')} Все награды выданы.")
-    nm = stats.names([r[3] for r in rows])
-    lines = [f"{e('hourglass')} <b>Невыданные награды</b> ({len(rows)})", LINE]
-    for rid, wk, place, uid, dia, att, st, note in rows:
-        lines.append(f"#{rid} · {wk} · {place} место · {nm[uid]} <code>{uid}</code>\n"
-                     f"   +{dia}💎 +{att}💳 · <b>{st}</b> <i>{escape(note or '')}</i>")
-    lines.append("\n/retry — попробовать выдать · /voidreward ID — отменить")
-    await msg.answer("\n".join(lines)[:4000])
+    weeks = [r[0] for r in db.q("SELECT DISTINCT week_key FROM rewards WHERE status = 'todo' ORDER BY week_key")]
+    if not weeks:
+        last = db.one("SELECT week_key FROM rewards ORDER BY week_key DESC LIMIT 1")
+        if not last:
+            return await msg.answer(f"{e('check')} Наград пока не было — первые итоги в понедельник в 00:00 МСК.")
+        text, markup = rewards.payout_sheet(last[0])
+        return await msg.answer(f"{e('check')} Невыданных наград нет. Последняя ведомость:\n\n" + text,
+                                reply_markup=markup)
+    for wk in weeks:
+        text, markup = rewards.payout_sheet(wk)
+        await msg.answer(text, reply_markup=markup)
 
 
-@router.message(Command("retry"))
-async def cmd_retry(msg: Message, bot: Bot):
-    n = await rewards.retry_pending(bot)
-    await msg.answer(f"{e('check')} Выдано наград: <b>{n}</b>. Остальные: /pending")
+async def _refresh_sheet(cq: CallbackQuery, reward_id: int):
+    wk = db.val("SELECT week_key FROM rewards WHERE id = ?", (reward_id,), default=None)
+    if wk:
+        text, markup = rewards.payout_sheet(wk)
+        try:
+            await cq.message.edit_text(text, reply_markup=markup)
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data.startswith("pdone:"))
+async def cb_done(cq: CallbackQuery, bot: Bot):
+    rid = int(cq.data.split(":", 1)[1])
+    ok = await rewards.mark_paid(bot, rid, cq.from_user.id)
+    await _refresh_sheet(cq, rid)
+    await cq.answer("✅ Отмечено как выданное" if ok else "Уже отмечено другим админом", show_alert=not ok)
+
+
+@router.callback_query(F.data.startswith("pvoid:"))
+async def cb_void(cq: CallbackQuery):
+    rid = int(cq.data.split(":", 1)[1])
+    n = db.exe("UPDATE rewards SET status = 'void', note = ? WHERE id = ? AND status = 'todo'",
+               (f"отменил {cq.from_user.id}", rid))
+    if n:
+        db.log(cq.from_user.id, "voidreward", f"#{rid}")
+    await _refresh_sheet(cq, rid)
+    await cq.answer("🚫 Награда отменена" if n else "Уже обработано")
+
+
+@router.message(Command("done"))
+async def cmd_done(msg: Message, command: CommandObject, bot: Bot):
+    a = (command.args or "").strip().lstrip("#")
+    if not a.isdigit():
+        return await msg.answer("Формат: <code>/done ID</code> — или кнопка «✅ Выдал» в /pending")
+    ok = await rewards.mark_paid(bot, int(a), msg.from_user.id)
+    await msg.answer(f"{e('check')} Награда #{a} отмечена выданной." if ok else "Такой невыданной награды нет.")
 
 
 @router.message(Command("voidreward"))
 async def cmd_void(msg: Message, command: CommandObject):
     a = (command.args or "").strip().lstrip("#")
     if not a.isdigit():
-        return await msg.answer("Формат: <code>/voidreward ID</code> (ID из /pending)")
-    n = db.exe("UPDATE rewards SET status = 'void', note = 'отменено админом' WHERE id = ? "
-               "AND status IN ('pending', 'error', 'new')", (int(a),))
+        return await msg.answer("Формат: <code>/voidreward ID</code>")
+    n = db.exe("UPDATE rewards SET status = 'void', note = 'отменено админом' WHERE id = ? AND status = 'todo'",
+               (int(a),))
     db.log(msg.from_user.id, "voidreward", a)
     await msg.answer(f"{e('check')} Награда #{a} отменена." if n else "Такой невыданной награды нет.")
-
-
-@router.message(Command("giftp"))
-async def cmd_giftp(msg: Message, command: CommandObject):
-    uid, rest = _target(msg, command)
-    if not await _need(msg, uid, "/giftp цель алмазы крутки [причина]"):
-        return
-    if len(rest) < 2 or not rest[0].isdigit() or not rest[1].isdigit():
-        return await msg.answer("Формат: <code>/giftp цель 50 5 За конкурс</code>")
-    dia, att = int(rest[0]), int(rest[1])
-    reason = " ".join(rest[2:]) or "Подарок от ManhwPatrol"
-    key = f"patrol:gift:{uid}:{int(time.time() * 1000)}"
-    res = await asyncio.to_thread(manhwcard.credit, key, uid, dia, att, reason)
-    if res == "paid":
-        db.log(msg.from_user.id, "giftp", f"{uid} +{dia}💎 +{att}💳 {reason}")
-        await manhwcard.notify(uid, f"{e('gift')} <b>Подарок от ManhwPatrol!</b>\n"
-                                    f"{rewards.prize_txt_raw(dia, att)}\n<i>{escape(reason)}</i>")
-        await msg.answer(f"{e('check')} {stats.mention(uid)}: +{dia}💎 +{att}💳 зачислено в ManhwCard.")
-    else:
-        hint = {"no_user": "игрок не зарегистрирован в ManhwCard", "banned": "игрок забанен в ManhwCard"}.get(res, res)
-        await msg.answer(f"{e('cross')} Не выдано: {escape(hint)}")
 
 
 # ═══════════════ СИСТЕМА ═══════════════
 @router.message(Command("pstatus"))
 async def cmd_pstatus(msg: Message):
     COUNTER.flush()
-    mc = manhwcard.available()
-    mc_users = 0
-    if mc:
-        try:
-            c = sqlite3.connect(MANHWCARD_DB_PATH, timeout=5)
-            mc_users = c.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-            c.close()
-        except Exception:
-            mc = False
     last = db.one("SELECT week_key, status FROM weeks ORDER BY week_key DESC LIMIT 1")
-    pend = db.val("SELECT COUNT(*) FROM rewards WHERE status IN ('pending', 'error', 'new')")
+    pend = db.val("SELECT COUNT(*) FROM rewards WHERE status = 'todo'")
     users = db.val("SELECT COUNT(*) FROM users")
+    total = stats.chat_totals("all")[0]
     lines = [
         f"{e('settings')} <b>СОСТОЯНИЕ</b>", LINE,
-        f"🎴 База ManhwCard: {'🟢 подключена · ' + num(mc_users) + ' игроков' if mc else '🔴 НЕ НАЙДЕНА — награды не выдаются!'}",
-        f"📨 Уведомления от ManhwCard: {'🟢' if manhwcard.mc_bot() else '⚪️ выкл (нет токена)'}",
         f"💬 Отслеживаемых чатов: <b>{len(db.tracked_chats())}</b>",
-        f"👥 Игроков в базе: <b>{num(users)}</b>",
+        f"👥 Игроков в базе: <b>{num(users)}</b> · сообщений: <b>{num(total)}</b>",
         f"🧮 В буфере: {sum(v[0] for v in COUNTER.buf.values())}",
         f"🏁 Последняя неделя: {last[0] + ' · ' + last[1] if last else '—'}",
-        f"⏳ Невыданных наград: <b>{pend}</b>",
+        f"🎁 Ждут выдачи: <b>{pend}</b>" + (" → /pending" if pend else ""),
         f"📥 История импортирована: {db.get_meta('imported') or 'нет'}",
+        f"💾 База: <code>{escape(DB_PATH)}</code>",
     ]
     await msg.answer("\n".join(lines))
 

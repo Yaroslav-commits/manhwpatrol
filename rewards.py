@@ -1,71 +1,34 @@
 """
-🏆 НЕДЕЛЬНЫЕ ИТОГИ, ВЫПЛАТЫ И РАСПИСАНИЕ
+🏆 НЕДЕЛЬНЫЕ ИТОГИ И РАСПИСАНИЕ (награды выдаются вручную)
 
-• Понедельник 00:00 МСК — итоги прошлой недели: топ-3 (по настройке призов)
-  получают алмазы и крутки в ManhwCard, в чат уходит красивый пост (+ закреп).
-• Каждую ночь в 00:00 — «итоги дня» (можно выключить: /toggle daily).
-• Воскресенье в reminder_hour — напоминание «до конца недели N часов».
-• Раз в 10 минут — повторная попытка выдать отложенные награды
-  (если победитель ещё не был зарегистрирован в ManhwCard).
+• Понедельник 00:00 МСК — итоги прошлой недели:
+    – в чат уходит красивый пост с победителями (+ закреп);
+    – каждому админу в личку приходит «ведомость»: победители и готовые
+      команды ManhwCard (/give_diamond, /give_attempts) — нажал, скопировал,
+      вставил в ManhwCard. Потом жмёшь «✅ Выдал» — и победителю приходит
+      сообщение от ManhwPatrol (если он запускал бота).
+• Каждую ночь в 00:00 — «итоги дня» (выключается: /toggle daily).
+• Воскресенье вечером — напоминание «до конца недели N часов».
 
-Всё идемпотентно: перезапуск бота не приведёт к двойной выплате.
+Всё идемпотентно: перезапуск бота не подведёт итоги дважды.
 """
 import asyncio
 import logging
 import time
 from datetime import date, datetime, timedelta
 
+from aiogram.types import InlineKeyboardMarkup
+
 import db
-import manhwcard
 import stats
 import views
-from config import MANHWCARD_USERNAME
+from config import ADMIN_IDS, MANHWCARD_USERNAME
 from counter import COUNTER
 from emojis import e
 from stats import num
 from views import LINE, btn, kb, medal, prize_txt
 
-PENDING_DAYS = 30
-
-
-# ═══════════════ выплата одной награды ═══════════════
-async def pay(reward_id: int, notify: bool = True) -> str:
-    r = db.one("SELECT week_key, place, user_id, messages, diamonds, attempts, status FROM rewards WHERE id = ?",
-               (reward_id,))
-    if not r:
-        return "missing"
-    wk, place, uid, msgs, dia, att, status = r
-    if status in ("paid", "void", "expired"):
-        return status
-
-    if not dia and not att:
-        res = "paid"
-    else:
-        res = await asyncio.to_thread(
-            manhwcard.credit, f"patrol:{wk}:{place}", uid, dia, att, f"ManhwPatrol {wk} #{place}")
-
-    now = int(time.time())
-    if res in ("paid", "already"):
-        db.exe("UPDATE rewards SET status = 'paid', paid_at = ?, note = NULL WHERE id = ?", (now, reward_id))
-        if res == "paid" and notify and (dia or att):
-            s = date.fromisoformat(wk)
-            await manhwcard.notify(uid, (
-                f"{e('trophy')} <b>Награда ManhwPatrol!</b>\n\n"
-                f"Вы заняли {medal(place)} <b>{place} место</b> в недельном топе активности чата "
-                f"({stats.fmt_range(wk, (s + timedelta(days=6)).isoformat())}) — "
-                f"<b>{num(msgs)}</b> сообщений.\n\n"
-                f"{e('gift')} Начислено: {prize_txt_raw(dia, att)}"))
-        return "paid"
-    if res == "no_user":
-        db.exe("UPDATE rewards SET status = 'pending', note = 'не зарегистрирован в ManhwCard' WHERE id = ?",
-               (reward_id,))
-        return "pending"
-    if res == "banned":
-        db.exe("UPDATE rewards SET status = 'void', note = 'забанен в ManhwCard' WHERE id = ?", (reward_id,))
-        return "void"
-    db.exe("UPDATE rewards SET status = 'error', note = ? WHERE id = ?", (res[:200], reward_id))
-    logging.error(f"Patrol reward {reward_id}: {res}")
-    return "error"
+STATUS = {"todo": "⏳ выдать", "paid": "✅ выдано", "void": "🚫 отменено"}
 
 
 def prize_txt_raw(dia, att) -> str:
@@ -77,17 +40,92 @@ def prize_txt_raw(dia, att) -> str:
     return " и ".join(parts) or "—"
 
 
+def week_label(wk: str) -> str:
+    s = date.fromisoformat(wk)
+    return stats.fmt_range(wk, (s + timedelta(days=6)).isoformat())
+
+
+# ═══════════════ ведомость для админа ═══════════════
+def payout_commands(uid: int, dia: int, att: int) -> str:
+    """Готовые команды ManhwCard (нажатие по <code> копирует строку)."""
+    out = []
+    if dia:
+        out.append(f"<code>/give_diamond {uid} {dia}</code>")
+    if att:
+        out.append(f"<code>/give_attempts {uid} {att}</code>")
+    return "\n".join(out)
+
+
+def payout_sheet(wk: str):
+    """Текст и кнопки ведомости выдачи за неделю wk."""
+    rows = db.q("SELECT id, place, user_id, messages, diamonds, attempts, status FROM rewards "
+                "WHERE week_key = ? ORDER BY place", (wk,))
+    nm = stats.names([r[2] for r in rows])
+    lines = [f"{e('gift')} <b>ВЫДАЧА НАГРАД</b> · {week_label(wk)}", LINE,
+             "<i>Нажмите на команду — она скопируется. Вставьте её в ManhwCard, "
+             "затем отметьте «✅ Выдал».</i>"]
+    buttons = []
+    for rid, place, uid, m, dia, att, st in rows:
+        lines += ["", f"{medal(place)} <b>{place} место</b> · {nm[uid]} · <code>{uid}</code>",
+                  f"   {e('chat')} {num(m)} · {e('gift')} {views_prize(dia, att)} · {STATUS.get(st, st)}"]
+        if st == "todo":
+            lines.append(payout_commands(uid, dia, att))
+            buttons.append([btn(f"✅ Выдал {place} месту", f"pdone:{rid}"),
+                            btn("🚫", f"pvoid:{rid}")])
+    if not rows:
+        lines.append("\n<i>Победителей нет — никто не набрал минимум.</i>")
+    elif not buttons:
+        lines.append(f"\n{e('check')} <b>Все награды выданы.</b>")
+    return "\n".join(lines), (InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None)
+
+
+def views_prize(dia, att) -> str:
+    parts = []
+    if dia:
+        parts.append(f"{num(dia)} {e('diamond')}")
+    if att:
+        parts.append(f"{num(att)} {e('attempts')}")
+    return " + ".join(parts) or "—"
+
+
+async def send_sheet_to_admins(bot, wk: str):
+    text, markup = payout_sheet(wk)
+    for aid in ADMIN_IDS:
+        try:
+            await bot.send_message(aid, text, reply_markup=markup)
+        except Exception as ex:
+            logging.warning(f"Ведомость админу {aid}: {ex} (админ должен нажать /start у ManhwPatrol)")
+
+
+async def mark_paid(bot, reward_id: int, admin_id: int) -> bool:
+    """Отмечает награду выданной и поздравляет победителя."""
+    r = db.one("SELECT week_key, place, user_id, messages, diamonds, attempts FROM rewards "
+               "WHERE id = ? AND status = 'todo'", (reward_id,))
+    if not r or not db.exe("UPDATE rewards SET status = 'paid', paid_at = ?, note = ? WHERE id = ? AND status = 'todo'",
+                           (int(time.time()), f"выдал {admin_id}", reward_id)):
+        return False
+    wk, place, uid, m, dia, att = r
+    db.log(admin_id, "reward_paid", f"#{reward_id} {wk} {place}м {uid} +{dia}💎 +{att}💳")
+    try:
+        await bot.send_message(uid, (
+            f"{e('trophy')} <b>Награда ManhwPatrol!</b>\n\n"
+            f"Вы заняли {medal(place)} <b>{place} место</b> в недельном топе активности чата "
+            f"({week_label(wk)}) — <b>{num(m)}</b> сообщений.\n\n"
+            f"{e('gift')} В @{MANHWCARD_USERNAME} начислено: {prize_txt_raw(dia, att)}"))
+    except Exception:
+        pass  # игрок не запускал ManhwPatrol — ManhwCard и так прислал «Вам начислено…»
+    return True
+
+
 # ═══════════════ подведение итогов недели ═══════════════
 def pick_winners(a: str, b: str):
     """[(uid, messages)] — кто получит призы за период a..b."""
     p = views.prizes()
     min_m = int(db.setting("min_messages") or 0)
     out = []
-    for uid, m, _ in stats.top_range(a, b, 200):
+    for uid, m, _ in stats.top_range(a, b, len(p) + 5):
         if len(out) >= len(p) or m < min_m:
             break
-        if manhwcard.is_banned(uid):
-            continue
         out.append((uid, m))
     return out
 
@@ -102,14 +140,12 @@ async def finalize_week(bot, ws: date, post: bool = True):
     COUNTER.flush()
 
     p = views.prizes()
-    winners = pick_winners(a, b)
     results = []
-    for place, (uid, m) in enumerate(winners, 1):
+    for place, (uid, m) in enumerate(pick_winners(a, b), 1):
         dia, att = p[place - 1]
         db.exe("INSERT OR IGNORE INTO rewards (week_key, place, user_id, messages, diamonds, attempts, status, "
-               "created_at) VALUES (?, ?, ?, ?, ?, ?, 'new', ?)", (wk, place, uid, m, dia, att, int(time.time())))
-        rid = db.val("SELECT id FROM rewards WHERE week_key = ? AND place = ?", (wk, place))
-        results.append((place, uid, m, await pay(rid)))
+               "created_at) VALUES (?, ?, ?, ?, ?, ?, 'todo', ?)", (wk, place, uid, m, dia, att, int(time.time())))
+        results.append((place, uid, m))
 
     total = db.one(f"SELECT SUM(messages), COUNT(DISTINCT user_id) FROM {stats.SRC} "
                    f"WHERE day BETWEEN ? AND ? AND messages > 0", (a, b))
@@ -119,37 +155,30 @@ async def finalize_week(bot, ws: date, post: bool = True):
     logging.info(f"ManhwPatrol: неделя {wk} — {len(results)} победителей, {tm} сообщений")
 
     if post and tm:
-        await post_results(bot, wk, a, b, results, tm, au)
+        await post_results(bot, a, b, results, tm, au)
+    if results:
+        await send_sheet_to_admins(bot, wk)
     return results
 
 
 def results_text(a, b, results, tm, au) -> str:
     lines = [f"{e('trophy')} <b>ИТОГИ НЕДЕЛИ</b> · {stats.fmt_range(a, b)}", LINE, ""]
     if results:
-        for place, uid, m, status in results:
+        for place, uid, m in results:
             lines.append(f"{medal(place)} {stats.mention(uid)} — <b>{num(m)}</b> {e('chat')}")
-            reward = prize_txt(place)
-            if status == "paid":
-                lines.append(f"      {e('gift')} {reward} {e('check')}")
-            elif status == "pending":
-                lines.append(f"      {e('gift')} {reward} — <i>запусти @{MANHWCARD_USERNAME} и нажми /claim, "
-                             f"награда ждёт {PENDING_DAYS} дней</i>")
-            elif status == "error":
-                lines.append(f"      {e('gift')} {reward} — <i>начислим чуть позже</i>")
+            lines.append(f"      {e('gift')} {prize_txt(place)}")
+        lines += ["", f"{e('card')} <i>Награды придут в @{MANHWCARD_USERNAME} в ближайшее время.</i>"]
     else:
         lines.append(f"{e('moon')} Никто не набрал минимум <b>{num(db.setting('min_messages'))}</b> сообщений — "
                      f"призы этой недели сгорают.")
 
-    rest = stats.top_range(a, b, 10)
     shown = {r[1] for r in results}
-    rest = [(u, m) for u, m, _ in rest if u not in shown]
+    rest = [(u, m) for u, m, _ in stats.top_range(a, b, 10) if u not in shown]
     if rest:
         nm = stats.names([u for u, _ in rest])
-        lines += ["", "<b>Дальше в топе:</b>"]
         start = len(results) + 1
-        body = [f"{i}. {nm[u]} — {num(m)}" + (" · <i>вне зачёта</i>" if manhwcard.is_banned(u) else "")
-                for i, (u, m) in enumerate(rest[:10 - len(results)], start)]
-        lines.append("<blockquote>" + "\n".join(body) + "</blockquote>")
+        body = [f"{i}. {nm[u]} — {num(m)}" for i, (u, m) in enumerate(rest[:10 - len(results)], start)]
+        lines += ["", "<b>Дальше в топе:</b>", "<blockquote>" + "\n".join(body) + "</blockquote>"]
 
     lines += [
         "",
@@ -160,7 +189,7 @@ def results_text(a, b, results, tm, au) -> str:
     return "\n".join(lines)
 
 
-async def post_results(bot, wk, a, b, results, tm, au):
+async def post_results(bot, a, b, results, tm, au):
     text = results_text(a, b, results, tm, au)
     markup = kb([btn("🏆 Топ всех времён", "ptop:all:0", icon="trophy"),
                  btn("🎴 ManhwCard", url=views.mc_url(), icon="card")])
@@ -174,25 +203,6 @@ async def post_results(bot, wk, a, b, results, tm, au):
                     pass
         except Exception as ex:
             logging.warning(f"Итоги недели в {chat_id}: {ex}")
-
-
-# ═══════════════ отложенные награды ═══════════════
-async def retry_pending(bot=None) -> int:
-    rows = db.q("SELECT id, user_id, created_at, status FROM rewards WHERE status IN ('pending', 'error', 'new')")
-    paid = 0
-    for rid, uid, created, status in rows:
-        if status == "pending" and created and time.time() - created > PENDING_DAYS * 86400:
-            db.exe("UPDATE rewards SET status = 'expired' WHERE id = ?", (rid,))
-            continue
-        if await pay(rid) == "paid":
-            paid += 1
-            if bot:
-                try:
-                    await bot.send_message(uid, f"{e('gift')} Ваша награда ManhwPatrol зачислена в "
-                                                f"@{MANHWCARD_USERNAME}!")
-                except Exception:
-                    pass
-    return paid
 
 
 # ═══════════════ итоги дня и напоминание ═══════════════
@@ -277,11 +287,14 @@ async def tick(bot):
             if db.setting("reminder") and now.hour < 23:
                 await week_reminder(bot)
 
-    # 4) Отложенные награды — раз в 10 минут
-    last = int(db.get_meta("pending_retry") or 0)
-    if time.time() - last > 600:
-        db.set_meta("pending_retry", str(int(time.time())))
-        await retry_pending(bot)
+    # 4) Напоминание админам о невыданных наградах — раз в сутки в 12:00
+    key = f"todo_ping:{today.isoformat()}"
+    if now.hour >= 12 and db.get_meta(key) is None:
+        db.set_meta(key, "1")
+        weeks = [r[0] for r in db.q("SELECT DISTINCT week_key FROM rewards WHERE status = 'todo' "
+                                    "AND created_at < ?", (int(time.time()) - 6 * 3600,))]
+        for wk in weeks:
+            await send_sheet_to_admins(bot, wk)
 
 
 async def scheduler(bot):

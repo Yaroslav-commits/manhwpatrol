@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from html import escape
 
 import db
-from config import TZ_OFFSET_HOURS, USE_MANHWCARD_NICKS
+from config import TZ_OFFSET_HOURS
 
 TZ = timezone(timedelta(hours=TZ_OFFSET_HOURS))
 
@@ -242,7 +242,7 @@ def peak_hour(period: str, ref=None):
 
 
 def week_wins(uid: int) -> dict:
-    rows = db.q("SELECT place, COUNT(*) FROM rewards WHERE user_id = ? GROUP BY place", (uid,))
+    rows = db.q("SELECT place, COUNT(*) FROM rewards WHERE user_id = ? AND status != 'void' GROUP BY place", (uid,))
     return {p: n for p, n in rows}
 
 
@@ -255,17 +255,10 @@ def names(uids) -> dict:
     ph = ",".join("?" * len(uids))
     rows = {r[0]: r for r in db.q(f"SELECT user_id, first_name, username FROM users WHERE user_id IN ({ph})",
                                   tuple(uids))}
-    nicks = {}
-    if USE_MANHWCARD_NICKS:
-        try:
-            import manhwcard
-            nicks = manhwcard.nicknames(uids)
-        except Exception:
-            nicks = {}
     out = {}
     for u in uids:
         r = rows.get(u)
-        raw = nicks.get(u) or (r[1] if r and r[1] else None) or (f"@{r[2]}" if r and r[2] else None) or f"Игрок {u}"
+        raw = (r[1] if r and r[1] else None) or (f"@{r[2]}" if r and r[2] else None) or f"Игрок {u}"
         raw = str(raw).strip()[:28] or f"Игрок {u}"
         out[u] = escape(raw)
     return out

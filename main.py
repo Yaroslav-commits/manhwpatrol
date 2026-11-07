@@ -12,9 +12,8 @@ from aiogram.types import (BotCommand, BotCommandScopeAllGroupChats,
                            BotCommandScopeAllPrivateChats, BotCommandScopeChat)
 
 import db
-import manhwcard
 import rewards
-from config import ADMIN_IDS, BOT_TOKEN, MANHWCARD_DB_PATH
+from config import ADMIN_IDS, BOT_TOKEN
 from counter import COUNTER
 from handlers import admin, public, tracker
 
@@ -27,14 +26,13 @@ PUBLIC_COMMANDS = [
     BotCommand(command="winners", description="📜 Зал славы"),
     BotCommand(command="ranks", description="🎖 Звания"),
     BotCommand(command="chatstats", description="📊 Статистика чата"),
-    BotCommand(command="claim", description="💎 Забрать награду"),
     BotCommand(command="help", description="❓ Как это работает"),
 ]
 ADMIN_COMMANDS = PUBLIC_COMMANDS + [
     BotCommand(command="padmin", description="🛡 Админ-панель"),
     BotCommand(command="settings", description="⚙️ Настройки"),
     BotCommand(command="preview", description="🎯 Предпросмотр итогов"),
-    BotCommand(command="pending", description="⏳ Невыданные награды"),
+    BotCommand(command="pending", description="🎁 Выдать награды"),
     BotCommand(command="pstatus", description="🩺 Состояние"),
 ]
 
@@ -55,8 +53,6 @@ async def set_commands(bot: Bot):
 async def main():
     db.init()
     COUNTER.load_totals()
-    if not manhwcard.available():
-        logging.warning(f"⚠️ База ManhwCard не найдена ({MANHWCARD_DB_PATH}) — награды будут ждать в /pending")
 
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML", link_preview_is_disabled=True))
     dp = Dispatcher()
@@ -73,7 +69,6 @@ async def main():
         for t in tasks:
             t.cancel()
         COUNTER.flush()
-        await manhwcard.close()
         await bot.session.close()
 
 

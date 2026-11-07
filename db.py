@@ -1,5 +1,6 @@
 """База ManhwPatrol (SQLite). Все вызовы — из одного потока event loop."""
 import json
+import os
 import sqlite3
 import time
 
@@ -11,6 +12,7 @@ _conn: sqlite3.Connection | None = None
 def conn() -> sqlite3.Connection:
     global _conn
     if _conn is None:
+        os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
         _conn = sqlite3.connect(DB_PATH, timeout=15)
         _conn.execute("PRAGMA journal_mode=WAL")
         _conn.execute("PRAGMA synchronous=NORMAL")

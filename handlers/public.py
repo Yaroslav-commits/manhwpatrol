@@ -3,12 +3,9 @@ from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, Message
 
-import db
-import rewards
 import stats
 import views
-from config import MANHWCARD_USERNAME
-from emojis import e, fb
+from emojis import fb
 
 router = Router(name="public")
 
@@ -83,24 +80,6 @@ async def cmd_ranks(msg: Message):
 async def cmd_chatstats(msg: Message):
     text, markup = views.chat_view()
     await msg.answer(text, reply_markup=markup)
-
-
-@router.message(Command("claim"))
-async def cmd_claim(msg: Message):
-    uid = msg.from_user.id
-    rows = db.q("SELECT id, place, week_key FROM rewards WHERE user_id = ? AND status IN ('pending', 'error')", (uid,))
-    if not rows:
-        return await msg.answer(f"{e('check')} Невыданных наград нет.")
-    got = 0
-    for rid, place, wk in rows:
-        if await rewards.pay(rid) == "paid":
-            got += 1
-    if got:
-        await msg.answer(f"{e('gift')} <b>Готово!</b> Наград зачислено: <b>{got}</b> — загляните в "
-                         f"@{MANHWCARD_USERNAME} {e('diamond')}")
-    else:
-        await msg.answer(f"{e('lock')} Пока не получается: сначала запустите @{MANHWCARD_USERNAME} "
-                         f"(нажмите «Старт»), затем снова /claim.")
 
 
 # ─── кнопки ───

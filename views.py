@@ -171,9 +171,9 @@ def profile_view(uid: int):
     if uid in db.excluded_ids():
         lines += ["", f"{e('lock')} <i>Исключён из топа администрацией</i>"]
 
-    pend = db.val("SELECT COUNT(*) FROM rewards WHERE user_id = ? AND status = 'pending'", (uid,))
+    pend = db.val("SELECT COUNT(*) FROM rewards WHERE user_id = ? AND status = 'todo'", (uid,))
     if pend:
-        lines += ["", f"{e('gift')} <b>Вас ждёт награда!</b> Запустите @{MANHWCARD_USERNAME} и нажмите /claim здесь."]
+        lines += ["", f"{e('gift')} <b>Ваша награда уже в пути</b> — администрация выдаст её в @{MANHWCARD_USERNAME}."]
 
     markup = kb([btn(f"{fb('trophy')} Топ недели", "ptop:week:0", icon="trophy"),
                  btn(f"{fb('gift')} Призы", "pprizes", icon="gift")])
@@ -192,7 +192,7 @@ def prizes_view():
         lines.append(f"{medal(i)} <b>{i} место</b> — {prize_txt(i)}")
     lines += [
         "",
-        f"{e('card')} Награда приходит сразу в @{MANHWCARD_USERNAME}",
+        f"{e('card')} Награду выдаёт администрация в @{MANHWCARD_USERNAME} после итогов",
         f"{e('target')} Условие: минимум <b>{num(min_m)}</b> сообщений за неделю",
         f"{e('shield')} Флуд, спам и повторы не засчитываются",
         f"{e('clock')} Итоги: понедельник 00:00 МСК · через <b>{stats.fmt_left(stats.week_end_dt())}</b>",
@@ -219,15 +219,17 @@ def winners_view(limit_weeks: int = 6):
         s = date.fromisoformat(wk)
         lines.append(f"\n{e('calendar')} <b>{stats.fmt_range(wk, (s + timedelta(days=6)).isoformat())}</b>"
                      f" · {num(tm)} {e('chat')}")
-        rows = db.q("SELECT place, user_id, messages, status FROM rewards WHERE week_key = ? ORDER BY place", (wk,))
+        rows = db.q("SELECT place, user_id, messages, status FROM rewards WHERE week_key = ? AND status != 'void' "
+                    "ORDER BY place", (wk,))
         if not rows:
             lines.append("   <i>никто не набрал минимум</i>")
         nm = stats.names([r[1] for r in rows])
         for place, uid, m, status in rows:
-            mark = " ⏳" if status == "pending" else ""
+            mark = ""
             lines.append(f"{medal(place)} {nm[uid]} — {num(m)}{mark}")
     # Рекордсмены
-    champs = db.q("SELECT user_id, COUNT(*) c FROM rewards WHERE place = 1 GROUP BY user_id ORDER BY c DESC LIMIT 3")
+    champs = db.q("SELECT user_id, COUNT(*) c FROM rewards WHERE place = 1 AND status != 'void' "
+                  "GROUP BY user_id ORDER BY c DESC LIMIT 3")
     if champs:
         nm = stats.names([r[0] for r in champs])
         lines += ["", f"{e('crown')} <b>Чаще всех на вершине:</b>"]
@@ -279,8 +281,8 @@ def help_view():
     return "\n".join([
         f"{e('patrol')} <b>ManhwPatrol</b> — патруль активности чата",
         LINE,
-        "Я считаю, кто сколько пишет в чате, и каждую неделю награждаю "
-        f"самых активных: <b>алмазы {e('diamond')} и крутки {e('attempts')}</b> приходят прямо в "
+        "Я считаю, кто сколько пишет в чате, и каждую неделю определяю "
+        f"самых активных — топ-3 получают <b>алмазы {e('diamond')} и крутки {e('attempts')}</b> в "
         f"@{MANHWCARD_USERNAME}.",
         "",
         f"{e('star')} <b>Команды</b>",
@@ -290,7 +292,6 @@ def help_view():
         "/winners — зал славы прошлых недель",
         "/ranks — звания патруля",
         "/chatstats — статистика чата",
-        "/claim — забрать награду, если она ждёт",
         "",
         f"{e('shield')} <b>Честная игра</b>",
         "<blockquote>Засчитываются нормальные сообщения. Флуд чаще пары секунд, "
