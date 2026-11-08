@@ -3,7 +3,7 @@
 
 Засчитывается:
   • текст / подпись, в которой минимум 2 разных символа (не «ааааа», не «)))»);
-  • медиа без подписи (стикер, GIF, фото, голосовое, кружок) — реже, раз в media_cooldown;
+  • медиа без подписи (стикер, GIF, фото, голосовое, кружок), но реже: раз в media_cooldown;
 Не засчитывается:
   • команды, пересланные сообщения, сообщения от каналов и ботов;
   • повтор того же текста подряд;
@@ -32,7 +32,7 @@ class Counter:
         self.last_media_ts: dict[int, float] = {}
         self.last_hash: dict[int, str] = {}
         self.minute: dict[int, deque] = defaultdict(deque)
-        self.totals: dict[int, int] = {}         # всё время — для званий
+        self.totals: dict[int, int] = {}         # за всё время, для званий
 
     # ─── загрузка ───
     def load_totals(self):

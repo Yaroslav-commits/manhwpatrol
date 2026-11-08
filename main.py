@@ -1,5 +1,5 @@
 """
-🚓 ManhwPatrol — патруль активности чата для ManhwCard
+🚓 ManhwPatrol, патруль активности чата для ManhwCard
 
 Запуск:  python main.py
 """
@@ -71,7 +71,7 @@ async def main():
         chat = await bot.get_chat(CHAT_ID)
         logging.info(f"💬 Чат патруля: {chat.title} (@{CHAT_USERNAME})")
     except Exception as ex:
-        logging.warning(f"⚠️ Бот не видит чат {CHAT_ID} (@{CHAT_USERNAME}): {ex} — добавьте его в чат")
+        logging.warning(f"⚠️ Бот не видит чат {CHAT_ID} (@{CHAT_USERNAME}): {ex}. Добавьте его в чат")
     tasks = [asyncio.create_task(rewards.scheduler(bot)), asyncio.create_task(rewards.flusher())]
     try:
         await dp.start_polling(bot, allowed_updates=["message", "callback_query", "my_chat_member"])

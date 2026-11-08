@@ -94,8 +94,8 @@ def fmt_day(s: str) -> str:
 def fmt_range(a: str, b: str) -> str:
     da, dbb = date.fromisoformat(a), date.fromisoformat(b)
     if da.month == dbb.month:
-        return f"{da.day}–{dbb.day} {MONTHS_GEN[dbb.month - 1]}"
-    return f"{fmt_day(a)} — {fmt_day(b)}"
+        return f"{da.day}-{dbb.day} {MONTHS_GEN[dbb.month - 1]}"
+    return f"{fmt_day(a)} - {fmt_day(b)}"
 
 
 def num(n) -> str:
@@ -209,7 +209,7 @@ def streak(uid: int) -> int:
         return 0
     cur = today()
     if days[0] != cur.isoformat():
-        cur -= timedelta(days=1)          # сегодня ещё не писал — серия не сгорела
+        cur -= timedelta(days=1)          # сегодня ещё не писал, но серия не сгорела
         if days[0] != cur.isoformat():
             return 0
     n = 0

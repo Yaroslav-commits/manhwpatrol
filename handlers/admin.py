@@ -39,37 +39,37 @@ TOGGLES = {
 
 HELP = (
     f"{e('shield')} <b>АДМИН-ПАНЕЛЬ ManhwPatrol</b>\n{LINE}\n"
-    "<i>Цель — ID, @username или ответ на сообщение.</i>\n\n"
-    f"{e('chat')} <b>Чаты</b>\n<blockquote expandable>"
-    "/chats — чат патруля и статус бота в нём\n"
-    "/say текст — объявление во все чаты"
+    "<i>Цель: ID, @username или ответ на сообщение.</i>\n\n"
+    f"{e('chat')} <b>Чат</b>\n<blockquote expandable>"
+    "/chats - чат патруля и статус бота в нём\n"
+    "/say текст - объявление в чат"
     "</blockquote>\n"
     f"{e('gift')} <b>Призы и правила</b>\n<blockquote expandable>"
-    "/settings — все настройки\n"
-    "/setprize место алмазы крутки — приз за место (0 0 — убрать)\n"
-    "/setmin N — минимум сообщений за неделю для приза\n"
-    "/setcd сек [медиа_сек] [в_минуту] — антиспам\n"
-    "/toggle daily|reminder|rankups|pin — вкл/выкл"
+    "/settings - все настройки\n"
+    "/setprize место алмазы крутки - приз за место (0 0 убирает место)\n"
+    "/setmin N - минимум сообщений за неделю для приза\n"
+    "/setcd сек [медиа_сек] [в_минуту] - антиспам\n"
+    "/toggle daily|reminder|rankups|pin - вкл/выкл"
     "</blockquote>\n"
     f"{e('user')} <b>Игроки</b>\n<blockquote expandable>"
-    "/pinfo цель — досье игрока\n"
-    "/exclude цель [причина] — убрать из топа и призов\n"
-    "/include цель — вернуть в топ\n"
-    "/excluded — список исключённых\n"
-    "/addmsg цель N — добавить (или N&lt;0 — убрать) сообщения за сегодня\n"
-    "/resetweek цель — обнулить игроку текущую неделю"
+    "/pinfo цель - досье игрока\n"
+    "/exclude цель [причина] - убрать из топа и призов\n"
+    "/include цель - вернуть в топ\n"
+    "/excluded - список исключённых\n"
+    "/addmsg цель N - добавить (или убрать, если N&lt;0) сообщения за сегодня\n"
+    "/resetweek цель - обнулить игроку текущую неделю"
     "</blockquote>\n"
     f"{e('trophy')} <b>Итоги и награды</b>\n<blockquote expandable>"
-    "/pending — ведомость: победители + готовые команды ManhwCard, кнопки «✅ Выдал»\n"
-    "/done ID — отметить награду выданной · /voidreward ID — отменить\n"
-    "/preview — кто получит призы, если подвести итоги сейчас\n"
-    "/finishweek — подвести итоги прошлой недели вручную (если бот был выключен)"
+    "/pending - ведомость: победители + готовые команды ManhwCard, кнопки «✅ Выдал»\n"
+    "/done ID - отметить награду выданной · /voidreward ID - отменить\n"
+    "/preview - кто получит призы, если подвести итоги сейчас\n"
+    "/finishweek - подвести итоги прошлой недели вручную (если бот был выключен)"
     "</blockquote>\n"
     f"{e('settings')} <b>Система</b>\n<blockquote expandable>"
-    "/import — загрузить историю чата (JSON из Telegram Desktop)\n"
-    "/plog [N] — журнал действий админов\n"
-    "/pbackup — копия базы ManhwPatrol\n"
-    "/pstatus — состояние бота и связи с ManhwCard"
+    "/import - загрузить историю чата (JSON из Telegram Desktop)\n"
+    "/plog [N] - журнал действий админов\n"
+    "/pbackup - копия базы ManhwPatrol\n"
+    "/pstatus - состояние бота"
     "</blockquote>"
 )
 
@@ -101,16 +101,16 @@ async def cmd_padmin(msg: Message):
 async def cmd_chats(msg: Message, bot: Bot):
     try:
         chat = await bot.get_chat(CHAT_ID)
-        title = escape(chat.title or "—")
+        title = escape(chat.title or "без названия")
         me = await bot.get_me()
         member = await bot.get_chat_member(CHAT_ID, me.id)
         status = {"administrator": "🟢 админ", "member": "🟢 участник"}.get(member.status, f"🔴 {member.status}")
     except Exception as ex:
-        title, status = "—", f"🔴 бот не в чате ({escape(str(ex))[:80]})"
+        title, status = "нет данных", f"🔴 бот не в чате ({escape(str(ex))[:80]})"
     await msg.answer(f"{e('chat')} <b>Чат патруля</b>\n{LINE}\n"
                      f"{title} · @{CHAT_USERNAME} · <code>{CHAT_ID}</code>\n"
                      f"Статус бота: {status}\n\n"
-                     f"<i>Бот работает только в этом чате. Сменить чат — переменная PATROL_CHAT_ID.</i>")
+                     f"<i>Бот работает только в этом чате. Сменить чат можно переменной PATROL_CHAT_ID.</i>")
 
 
 @router.message(Command("say"))
@@ -148,7 +148,7 @@ async def cmd_settings(msg: Message):
         "",
     ]
     for k, label in TOGGLES.items():
-        lines.append(f"{'🟢' if db.setting(k) else '🔴'} <code>{k}</code> — {label}")
+        lines.append(f"{'🟢' if db.setting(k) else '🔴'} <code>{k}</code>: {label}")
     await msg.answer("\n".join(lines))
 
 
@@ -185,8 +185,8 @@ async def cmd_setmin(msg: Message, command: CommandObject):
 async def cmd_setcd(msg: Message, command: CommandObject):
     a = (command.args or "").split()
     if not a or not all(x.isdigit() for x in a):
-        return await msg.answer("Формат: <code>/setcd 3 10 15</code> — текст раз в 3 с, медиа раз в 10 с, "
-                                "не больше 15 в минуту")
+        return await msg.answer("Формат: <code>/setcd 3 10 15</code>\n"
+                                "Это значит: текст раз в 3 с, медиа раз в 10 с, не больше 15 в минуту.")
     for key, v in zip(("cooldown", "media_cooldown", "per_minute"), a):
         db.set_setting(key, int(v))
     db.log(msg.from_user.id, "setcd", " ".join(a))
@@ -223,7 +223,7 @@ async def cmd_pinfo(msg: Message, command: CommandObject):
         extra.append(f"👁 Впервые: {datetime.fromtimestamp(u[1], stats.TZ):%d.%m.%Y} · последний раз: "
                      f"{datetime.fromtimestamp(u[2] or u[1], stats.TZ):%d.%m %H:%M}")
     if ex:
-        extra.append(f"🔒 Исключён: <i>{escape(ex[0] or '—')}</i> (админ {ex[1]})")
+        extra.append(f"🔒 Исключён: <i>{escape(ex[0] or 'без причины')}</i> (админ {ex[1]})")
     if rw:
         extra.append("🏆 Награды: " + ", ".join(f"#{r[0]} {r[1]}·{r[2]}м·{r[5]}" for r in rw))
     await msg.answer(text + "\n" + "\n".join(extra))
@@ -259,7 +259,7 @@ async def cmd_excluded(msg: Message):
         return await msg.answer("Исключённых нет.")
     nm = stats.names([r[0] for r in rows])
     await msg.answer(f"{e('lock')} <b>Исключены из топа</b> ({len(rows)})\n" + "\n".join(
-        f"• {nm[u]} <code>{u}</code> — <i>{escape(r or '—')}</i>" for u, r in rows))
+        f"• {nm[u]} <code>{u}</code>: <i>{escape(r or 'без причины')}</i>" for u, r in rows))
 
 
 @router.message(Command("addmsg"))
@@ -305,8 +305,8 @@ async def cmd_preview(msg: Message):
     winners = rewards.pick_winners(a, b)
     results = [(i, uid, m) for i, (uid, m) in enumerate(winners, 1)]
     tm, au = stats.chat_totals("week")
-    await msg.answer(f"{e('target')} <b>ПРЕДПРОСМОТР</b> — так выглядели бы итоги прямо сейчас "
-                     f"(ничего не выдано)\n\n" + rewards.results_text(a, b, results, tm, au))
+    await msg.answer(f"{e('target')} <b>Предпросмотр.</b> Так выглядели бы итоги, если подвести их сейчас. "
+                     f"Награды при этом не создаются.\n\n" + rewards.results_text(a, b, results, tm, au))
 
 
 _CONFIRM: dict[str, str] = {}
@@ -323,8 +323,8 @@ async def cmd_finishweek(msg: Message):
     a, b = ws.isoformat(), (ws + timedelta(days=6)).isoformat()
     w = rewards.pick_winners(a, b)
     nm = stats.names([u for u, _ in w])
-    body = "\n".join(f"{views.medal(i)} {nm[u]} — {num(m)} → {views.prize_txt(i)}" for i, (u, m) in enumerate(w, 1))
-    await msg.answer(f"{e('alarm')} Подвести итоги недели <b>{stats.fmt_range(a, b)}</b>? В чат уйдёт пост, вам — ведомость выдачи.\n\n"
+    body = "\n".join(f"{views.medal(i)} {nm[u]}: {num(m)} → {views.prize_txt(i)}" for i, (u, m) in enumerate(w, 1))
+    await msg.answer(f"{e('alarm')} Подвести итоги недели <b>{stats.fmt_range(a, b)}</b>? В чат уйдёт пост, а вам придёт ведомость выдачи.\n\n"
                      f"{body or '<i>победителей нет</i>'}",
                      reply_markup=kb([btn("✅ Подвести", f"pfin:{token}"), btn("❌ Отмена", f"pfinx:{token}")]))
 
@@ -350,7 +350,7 @@ async def cmd_pending(msg: Message):
     if not weeks:
         last = db.one("SELECT week_key FROM rewards ORDER BY week_key DESC LIMIT 1")
         if not last:
-            return await msg.answer(f"{e('check')} Наград пока не было — первые итоги в понедельник в 00:00 МСК.")
+            return await msg.answer(f"{e('check')} Наград пока не было. Первые итоги будут в понедельник в 00:00 МСК.")
         text, markup = rewards.payout_sheet(last[0])
         return await msg.answer(f"{e('check')} Невыданных наград нет. Последняя ведомость:\n\n" + text,
                                 reply_markup=markup)
@@ -392,7 +392,7 @@ async def cb_void(cq: CallbackQuery):
 async def cmd_done(msg: Message, command: CommandObject, bot: Bot):
     a = (command.args or "").strip().lstrip("#")
     if not a.isdigit():
-        return await msg.answer("Формат: <code>/done ID</code> — или кнопка «✅ Выдал» в /pending")
+        return await msg.answer("Формат: <code>/done ID</code>. Можно и кнопкой «✅ Выдал» в /pending")
     ok = await rewards.mark_paid(bot, int(a), msg.from_user.id)
     await msg.answer(f"{e('check')} Награда #{a} отмечена выданной." if ok else "Такой невыданной награды нет.")
 
@@ -421,7 +421,7 @@ async def cmd_pstatus(msg: Message):
         f"💬 Чат: @{CHAT_USERNAME} <code>{CHAT_ID}</code>",
         f"👥 Игроков в базе: <b>{num(users)}</b> · сообщений: <b>{num(total)}</b>",
         f"🧮 В буфере: {sum(v[0] for v in COUNTER.buf.values())}",
-        f"🏁 Последняя неделя: {last[0] + ' · ' + last[1] if last else '—'}",
+        f"🏁 Последняя неделя: {last[0] + ' · ' + last[1] if last else 'ещё не было'}",
         f"🎁 Ждут выдачи: <b>{pend}</b>" + (" → /pending" if pend else ""),
         f"📥 История импортирована: {db.get_meta('imported') or 'нет'}",
         f"💾 База: <code>{escape(DB_PATH)}</code>",
@@ -509,14 +509,14 @@ async def cmd_import(msg: Message, bot: Bot):
         return await msg.answer(
             f"{e('history')} <b>Импорт истории чата</b>\n\n"
             "1. Telegram Desktop → чат → ⋮ → «Экспорт истории чата»\n"
-            "2. Снимите все галочки медиа, формат — <b>JSON</b>\n"
+            "2. Снимите все галочки медиа, формат <b>JSON</b>\n"
             "3. Пришлите сюда файл <code>result.json</code> с подписью /import "
             "(или ответьте /import на файл)\n\n"
-            "<i>Учитываются только сообщения ДО начала подсчёта ботом — двойного счёта не будет. "
-            "Повторный импорт заменяет прошлый. Лимит Telegram для ботов — 20 МБ "
-            "(можно сжать в .json без медиа).</i>")
+            "<i>Учитываются только сообщения до начала подсчёта ботом, поэтому двойного счёта не будет. "
+            "Повторный импорт заменяет прошлый. Боты могут скачивать файлы только до 20 МБ, "
+            "поэтому экспортируйте без медиа.</i>")
     if (doc.file_size or 0) > 20 * 1024 * 1024:
-        return await msg.answer(f"{e('cross')} Файл больше 20 МБ — бот не может его скачать.")
+        return await msg.answer(f"{e('cross')} Файл больше 20 МБ, бот не сможет его скачать.")
     wait = await msg.answer(f"{e('hourglass')} Скачиваю и разбираю историю…")
     try:
         buf = io.BytesIO()
@@ -540,7 +540,7 @@ async def cmd_import(msg: Message, bot: Bot):
     db.set_meta("imported", stamp)
     db.log(msg.from_user.id, "import", f"{seen} всего, {counted} засчитано, {len(names)} игроков")
     await wait.edit_text(
-        f"{e('check')} <b>История загружена!</b>\n\n"
+        f"{e('check')} <b>История загружена</b>\n\n"
         f"Сообщений в файле (до старта бота): <b>{num(seen)}</b>\n"
         f"Засчитано с учётом антиспама: <b>{num(counted)}</b>\n"
         f"Игроков: <b>{num(len(names))}</b>\n\n"

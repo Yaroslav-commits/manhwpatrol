@@ -1,4 +1,4 @@
-"""База ManhwPatrol (SQLite). Все вызовы — из одного потока event loop."""
+"""База ManhwPatrol (SQLite). Все вызовы идут из одного потока event loop."""
 import json
 import os
 import sqlite3

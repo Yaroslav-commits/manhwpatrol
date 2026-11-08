@@ -1,14 +1,14 @@
 """
 🏆 НЕДЕЛЬНЫЕ ИТОГИ И РАСПИСАНИЕ (награды выдаются вручную)
 
-• Понедельник 00:00 МСК — итоги прошлой недели:
-    – в чат уходит красивый пост с победителями (+ закреп);
-    – каждому админу в личку приходит «ведомость»: победители и готовые
-      команды ManhwCard (/give_diamond, /give_attempts) — нажал, скопировал,
-      вставил в ManhwCard. Потом жмёшь «✅ Выдал» — и победителю приходит
-      сообщение от ManhwPatrol (если он запускал бота).
-• Каждую ночь в 00:00 — «итоги дня» (выключается: /toggle daily).
-• Воскресенье вечером — напоминание «до конца недели N часов».
+• Понедельник 00:00 МСК: итоги прошлой недели.
+    В чат уходит пост с победителями (и закрепляется), а каждому админу
+    в личку приходит ведомость с готовыми командами ManhwCard
+    (/give_diamond, /give_attempts). Скопировал, отправил в ManhwCard,
+    нажал «✅ Выдал», и победителю приходит сообщение от ManhwPatrol
+    (если он запускал бота).
+• Каждую ночь в 00:00: итоги дня (выключается командой /toggle daily).
+• Воскресенье вечером: напоминание о скором конце недели.
 
 Всё идемпотентно: перезапуск бота не подведёт итоги дважды.
 """
@@ -37,7 +37,7 @@ def prize_txt_raw(dia, att) -> str:
         parts.append(f"<b>{num(dia)}</b> {e('diamond')} алмазов")
     if att:
         parts.append(f"<b>{num(att)}</b> {e('attempts')} круток")
-    return " и ".join(parts) or "—"
+    return " и ".join(parts) or "ничего"
 
 
 def week_label(wk: str) -> str:
@@ -62,8 +62,8 @@ def payout_sheet(wk: str):
                 "WHERE week_key = ? ORDER BY place", (wk,))
     nm = stats.names([r[2] for r in rows])
     lines = [f"{e('gift')} <b>ВЫДАЧА НАГРАД</b> · {week_label(wk)}", LINE,
-             "<i>Нажмите на команду — она скопируется. Вставьте её в ManhwCard, "
-             "затем отметьте «✅ Выдал».</i>"]
+             "<i>Нажмите на команду, чтобы скопировать, и отправьте её в ManhwCard. "
+             "После этого нажмите «✅ Выдал».</i>"]
     buttons = []
     for rid, place, uid, m, dia, att, st in rows:
         lines += ["", f"{medal(place)} <b>{place} место</b> · {nm[uid]} · <code>{uid}</code>",
@@ -73,7 +73,7 @@ def payout_sheet(wk: str):
             buttons.append([btn(f"✅ Выдал {place} месту", f"pdone:{rid}"),
                             btn("🚫", f"pvoid:{rid}")])
     if not rows:
-        lines.append("\n<i>Победителей нет — никто не набрал минимум.</i>")
+        lines.append("\n<i>Победителей нет, никто не набрал минимум.</i>")
     elif not buttons:
         lines.append(f"\n{e('check')} <b>Все награды выданы.</b>")
     return "\n".join(lines), (InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None)
@@ -85,7 +85,7 @@ def views_prize(dia, att) -> str:
         parts.append(f"{num(dia)} {e('diamond')}")
     if att:
         parts.append(f"{num(att)} {e('attempts')}")
-    return " + ".join(parts) or "—"
+    return " + ".join(parts) or "ничего"
 
 
 async def send_sheet_to_admins(bot, wk: str):
@@ -108,18 +108,18 @@ async def mark_paid(bot, reward_id: int, admin_id: int) -> bool:
     db.log(admin_id, "reward_paid", f"#{reward_id} {wk} {place}м {uid} +{dia}💎 +{att}💳")
     try:
         await bot.send_message(uid, (
-            f"{e('trophy')} <b>Награда ManhwPatrol!</b>\n\n"
+            f"{e('trophy')} <b>Награда ManhwPatrol</b>\n\n"
             f"Вы заняли {medal(place)} <b>{place} место</b> в недельном топе активности чата "
-            f"({week_label(wk)}) — <b>{num(m)}</b> сообщений.\n\n"
+            f"({week_label(wk)}), у вас <b>{num(m)}</b> сообщений.\n\n"
             f"{e('gift')} В @{MANHWCARD_USERNAME} начислено: {prize_txt_raw(dia, att)}"))
     except Exception:
-        pass  # игрок не запускал ManhwPatrol — ManhwCard и так прислал «Вам начислено…»
+        pass  # игрок не запускал ManhwPatrol, а ManhwCard и так прислал «Вам начислено…»
     return True
 
 
 # ═══════════════ подведение итогов недели ═══════════════
 def pick_winners(a: str, b: str):
-    """[(uid, messages)] — кто получит призы за период a..b."""
+    """[(uid, messages)]: кто получит призы за период a..b."""
     p = views.prizes()
     min_m = int(db.setting("min_messages") or 0)
     out = []
@@ -152,7 +152,7 @@ async def finalize_week(bot, ws: date, post: bool = True):
     tm, au = (total[0] or 0, total[1] or 0) if total else (0, 0)
     db.exe("UPDATE weeks SET status = 'done', total_messages = ?, active_users = ? WHERE week_key = ?",
            (tm, au, wk))
-    logging.info(f"ManhwPatrol: неделя {wk} — {len(results)} победителей, {tm} сообщений")
+    logging.info(f"ManhwPatrol: неделя {wk}, {len(results)} победителей, {tm} сообщений")
 
     if post and tm:
         await post_results(bot, a, b, results, tm, au)
@@ -165,26 +165,26 @@ def results_text(a, b, results, tm, au) -> str:
     lines = [f"{e('trophy')} <b>ИТОГИ НЕДЕЛИ</b> · {stats.fmt_range(a, b)}", LINE, ""]
     if results:
         for place, uid, m in results:
-            lines.append(f"{medal(place)} {stats.mention(uid)} — <b>{num(m)}</b> {e('chat')}")
+            lines.append(f"{medal(place)} {stats.mention(uid)}: <b>{num(m)}</b> {e('chat')}")
             lines.append(f"      {e('gift')} {prize_txt(place)}")
         lines += ["", f"{e('card')} <i>Награды придут в @{MANHWCARD_USERNAME} в ближайшее время.</i>"]
     else:
-        lines.append(f"{e('moon')} Никто не набрал минимум <b>{num(db.setting('min_messages'))}</b> сообщений — "
-                     f"призы этой недели сгорают.")
+        lines.append(f"{e('moon')} Никто не набрал минимум в <b>{num(db.setting('min_messages'))}</b> сообщений, "
+                     f"поэтому призов на этой неделе нет.")
 
     shown = {r[1] for r in results}
     rest = [(u, m) for u, m, _ in stats.top_range(a, b, 10) if u not in shown]
     if rest:
         nm = stats.names([u for u, _ in rest])
         start = len(results) + 1
-        body = [f"{i}. {nm[u]} — {num(m)}" for i, (u, m) in enumerate(rest[:10 - len(results)], start)]
+        body = [f"{i}. {nm[u]}: {num(m)}" for i, (u, m) in enumerate(rest[:10 - len(results)], start)]
         lines += ["", "<b>Дальше в топе:</b>", "<blockquote>" + "\n".join(body) + "</blockquote>"]
 
     lines += [
         "",
         f"{e('chat')} Сообщений за неделю: <b>{num(tm)}</b> · {e('users')} Активных: <b>{num(au)}</b>",
         "",
-        f"{e('rocket')} <b>Новая неделя уже началась</b> — счёт обнулён, гонка за призами стартует заново!",
+        f"{e('rocket')} Новая неделя началась, счёт обнулился. Всем удачи!",
     ]
     return "\n".join(lines)
 
@@ -216,12 +216,12 @@ async def daily_summary(bot, day: date):
     nm = stats.names([r[0] for r in rows])
     lines = [f"{e('moon')} <b>ИТОГИ ДНЯ</b> · {stats.fmt_day(d)}", LINE,
              f"{e('chat')} <b>{num(tm)}</b> сообщений · {e('users')} <b>{num(au)}</b> активных", "",
-             f"{e('star')} <b>Активист дня:</b> {nm[rows[0][0]]} — {num(rows[0][1])}"]
+             f"{e('star')} <b>Активист дня:</b> {nm[rows[0][0]]}, {num(rows[0][1])} сообщ."]
     for i, (uid, m, _) in enumerate(rows[1:], 2):
-        lines.append(f"{medal(i)} {nm[uid]} — {num(m)}")
+        lines.append(f"{medal(i)} {nm[uid]}: {num(m)}")
     leaders = stats.top("week", 1)
     if leaders:
-        lines += ["", f"{e('trophy')} Лидер недели: {stats.name(leaders[0][0])} — {num(leaders[0][1])} · "
+        lines += ["", f"{e('trophy')} Лидер недели: {stats.name(leaders[0][0])}, {num(leaders[0][1])} сообщ. · "
                       f"до итогов <b>{stats.fmt_left(stats.week_end_dt())}</b>"]
     text = "\n".join(lines)
     for chat_id in db.tracked_chats():
@@ -238,13 +238,13 @@ async def week_reminder(bot):
         return
     nm = stats.names([r[0] for r in rows])
     min_m = int(db.setting("min_messages") or 0)
-    lines = [f"{e('alarm')} <b>ФИНИШНАЯ ПРЯМАЯ!</b>", LINE,
+    lines = [f"{e('alarm')} <b>Скоро итоги недели</b>", LINE,
              f"{e('clock')} До итогов недели: <b>{stats.fmt_left(stats.week_end_dt())}</b>", "",
              f"{e('fire')} <b>Сейчас в призах:</b>"]
     for i, (uid, m, _) in enumerate(rows, 1):
         tail = f" · {e('gift')} {prize_txt(i)}" if prize_txt(i) else ""
-        lines.append(f"{medal(i)} {nm[uid]} — <b>{num(m)}</b>{tail}")
-    lines += ["", f"<i>Ещё можно ворваться в топ! Минимум для приза — {num(min_m)} сообщений.</i>"]
+        lines.append(f"{medal(i)} {nm[uid]}: <b>{num(m)}</b>{tail}")
+    lines += ["", f"<i>Ещё можно успеть в топ. Для приза нужно минимум {num(min_m)} сообщений.</i>"]
     text = "\n".join(lines)
     markup = kb([btn("🏆 Топ недели", "ptop:week:0", icon="trophy")])
     for chat_id in db.tracked_chats():
@@ -287,7 +287,7 @@ async def tick(bot):
             if db.setting("reminder") and now.hour < 23:
                 await week_reminder(bot)
 
-    # 4) Напоминание админам о невыданных наградах — раз в сутки в 12:00
+    # 4) Напоминание админам о невыданных наградах, раз в сутки в 12:00
     key = f"todo_ping:{today.isoformat()}"
     if now.hour >= 12 and db.get_meta(key) is None:
         db.set_meta(key, "1")

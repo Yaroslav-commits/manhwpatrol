@@ -24,15 +24,15 @@ async def on_bot_added(ev: ChatMemberUpdated, bot: Bot):
     if ev.chat.id != CHAT_ID:
         try:
             await bot.send_message(ev.chat.id, f"{e('lock')} ManhwPatrol работает только в @{CHAT_USERNAME}. "
-                                               f"Ухожу отсюда — заглядывайте к нам!")
+                                               f"Здесь я не останусь.")
         except Exception:
             pass
         await leave_foreign(bot, ev.chat.id)
         return
-    text = (f"{e('patrol')} <b>ManhwPatrol на посту!</b>\n\n"
-            f"Я считаю активность чата: кто больше пишет — тот поднимается в топе, а топ-3 недели "
-            f"получают {e('diamond')} алмазы и {e('attempts')} крутки в ManhwCard.\n\n"
-            f"{e('check')} Подсчёт <b>включён</b>. Команды: /top · /me · /prizes")
+    text = (f"{e('patrol')} <b>ManhwPatrol в чате</b>\n\n"
+            f"Считаю сообщения. Каждую неделю трое самых активных получают "
+            f"{e('diamond')} алмазы и {e('attempts')} крутки в ManhwCard.\n\n"
+            f"Команды: /top, /me, /prizes")
     try:
         await bot.send_message(ev.chat.id, text)
     except Exception:
@@ -61,12 +61,12 @@ async def count_message(msg: Message):
         total = COUNTER.totals.get(u.id, 0)
         rname = stats.RANKS[new_rank][1]
         nxt = stats.RANKS[new_rank + 1] if new_rank + 1 < len(stats.RANKS) else None
-        tail = (f"\n{e('up')} Следующее — «{nxt[1]}» через {stats.num(nxt[0] - total)} сообщений"
-                if nxt else f"\n{e('crown')} Это высшее звание патруля!")
+        tail = (f"\n{e('up')} Следующее звание «{nxt[1]}» через {stats.num(nxt[0] - total)} сообщений"
+                if nxt else f"\n{e('crown')} Это высшее звание.")
         try:
             who = f'<a href="tg://user?id={u.id}">{escape((u.first_name or "Игрок")[:28])}</a>'
-            await msg.reply(f"{e('sparkle')} <b>Повышение!</b> {who} получает звание "
-                            f"{e('r' + str(new_rank))} <b>{rname}</b> — {stats.num(total)} сообщений!{tail}",
+            await msg.reply(f"{e('sparkle')} {who} получает звание "
+                            f"{e('r' + str(new_rank))} <b>{rname}</b>, у него уже {stats.num(total)} сообщений.{tail}",
                             disable_notification=True)
         except Exception:
             logging.debug("rankup reply failed", exc_info=True)

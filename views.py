@@ -87,9 +87,9 @@ def top_view(period: str, page: int = 0):
 
     lines = [f"{e('trophy')} <b>ТОП АКТИВНОСТИ · {stats.PERIODS[period].upper()}</b>", LINE, sub, ""]
     if not rows:
-        lines.append(f"{e('moon')} <i>Пока тишина… Напиши первым и займи вершину!</i>")
+        lines.append(f"{e('moon')} <i>Пока пусто. Напиши что-нибудь в чат, и ты первый в топе.</i>")
     for i, (uid, m, _) in enumerate(rows, start=page * PAGE + 1):
-        line = f"{medal(i)} {nm[uid]} — <b>{num(m)}</b> {e('chat')}"
+        line = f"{medal(i)} {nm[uid]}: <b>{num(m)}</b> {e('chat')}"
         if period == "week" and i <= len(prizes()):
             line += f"\n      {e('gift')} {prize_txt(i)}" + ("" if m >= min_m else f" · <i>нужно {num(min_m)}</i>")
         lines.append(line)
@@ -115,7 +115,7 @@ def my_place_alert(uid: int, period: str) -> str:
     if uid in db.excluded_ids():
         return "🔒 Вы исключены из топа администрацией."
     if not place:
-        return f"{label}: у вас пока 0 сообщений. Пора в чат!"
+        return f"{label}: у вас пока 0 сообщений."
     txt = f"{label}: место #{place} · {num(m)} сообщений"
     if place > 1:
         rows = stats.top(period, 1, place - 2)
@@ -139,7 +139,7 @@ def profile_view(uid: int):
         pct = (total - lo) / max(1, hi - lo)
         prog = f"{stats.bar(pct)} <b>{int(pct * 100)}%</b>\n{e('up')} До «{nxt}»: ещё <b>{num(hi - total)}</b>"
     else:
-        prog = f"{stats.bar(1)} <b>MAX</b>\n{e('crown')} Высшее звание патруля!"
+        prog = f"{stats.bar(1)} <b>MAX</b>\n{e('crown')} Это высшее звание."
 
     d = stats.user_period(uid, "day")[0]
     w = stats.user_period(uid, "week")[0]
@@ -177,7 +177,7 @@ def profile_view(uid: int):
 
     pend = db.val("SELECT COUNT(*) FROM rewards WHERE user_id = ? AND status = 'todo'", (uid,))
     if pend:
-        lines += ["", f"{e('gift')} <b>Ваша награда уже в пути</b> — администрация выдаст её в @{MANHWCARD_USERNAME}."]
+        lines += ["", f"{e('gift')} Скоро администрация выдаст вам награду в @{MANHWCARD_USERNAME}."]
 
     markup = kb([btn(f"{fb('trophy')} Топ недели", "ptop:week:0", icon="trophy"),
                  btn(f"{fb('gift')} Призы", "pprizes", icon="gift")])
@@ -193,11 +193,11 @@ def prizes_view():
     if not p:
         lines.append("<i>Призы на этой неделе не назначены.</i>")
     for i in range(1, len(p) + 1):
-        lines.append(f"{medal(i)} <b>{i} место</b> — {prize_txt(i)}")
+        lines.append(f"{medal(i)} <b>{i} место:</b> {prize_txt(i)}")
     lines += [
         "",
-        f"{e('card')} Награду выдаёт администрация в @{MANHWCARD_USERNAME} после итогов",
-        f"{e('target')} Условие: минимум <b>{num(min_m)}</b> сообщений за неделю",
+        f"{e('card')} Награды выдаёт администрация в @{MANHWCARD_USERNAME} после итогов",
+        f"{e('target')} Нужно минимум <b>{num(min_m)}</b> сообщений за неделю",
         f"{e('shield')} Флуд, спам и повторы не засчитываются",
         f"{e('clock')} Итоги: понедельник 00:00 МСК · через <b>{stats.fmt_left(stats.week_end_dt())}</b>",
     ]
@@ -206,7 +206,7 @@ def prizes_view():
         nm = stats.names([r[0] for r in leaders])
         lines += ["", f"{e('fire')} <b>Сейчас лидируют:</b>"]
         for i, (uid, m, _) in enumerate(leaders, 1):
-            lines.append(f"{medal(i)} {nm[uid]} — {num(m)}")
+            lines.append(f"{medal(i)} {nm[uid]}: {num(m)}")
     markup = kb([btn(f"{fb('trophy')} Топ недели", "ptop:week:0", icon="trophy"),
                  btn(f"{fb('card')} ManhwCard", url=mc_url(), icon="card")])
     return "\n".join(lines), markup
@@ -218,7 +218,7 @@ def winners_view(limit_weeks: int = 6):
                  "ORDER BY week_key DESC LIMIT ?", (limit_weeks,))
     lines = [f"{e('history')} <b>ЗАЛ СЛАВЫ</b>", LINE]
     if not weeks:
-        lines.append("<i>Первые итоги подведём в понедельник. Всё впереди!</i>")
+        lines.append("<i>Первые итоги будут в понедельник.</i>")
     for wk, tm, au in weeks:
         s = date.fromisoformat(wk)
         lines.append(f"\n{e('calendar')} <b>{stats.fmt_range(wk, (s + timedelta(days=6)).isoformat())}</b>"
@@ -230,14 +230,14 @@ def winners_view(limit_weeks: int = 6):
         nm = stats.names([r[1] for r in rows])
         for place, uid, m, status in rows:
             mark = ""
-            lines.append(f"{medal(place)} {nm[uid]} — {num(m)}{mark}")
+            lines.append(f"{medal(place)} {nm[uid]}: {num(m)}{mark}")
     # Рекордсмены
     champs = db.q("SELECT user_id, COUNT(*) c FROM rewards WHERE place = 1 AND status != 'void' "
                   "GROUP BY user_id ORDER BY c DESC LIMIT 3")
     if champs:
         nm = stats.names([r[0] for r in champs])
-        lines += ["", f"{e('crown')} <b>Чаще всех на вершине:</b>"]
-        lines += [f"• {nm[u]} — {c}× {fb('gold')}" for u, c in champs]
+        lines += ["", f"{e('crown')} <b>Чаще всех на первом месте:</b>"]
+        lines += [f"• {nm[u]}: {c}× {fb('gold')}" for u, c in champs]
     return "\n".join(lines), kb([btn(f"{fb('trophy')} Топ недели", "ptop:week:0", icon="trophy")])
 
 
@@ -248,7 +248,7 @@ def ranks_view(uid: int | None = None):
     lines = [f"{e('medal')} <b>ЗВАНИЯ ПАТРУЛЯ</b>", LINE, "<i>Звание растёт от сообщений за всё время.</i>", ""]
     for i, (need, n) in enumerate(stats.RANKS):
         mark = f"  ← <b>вы здесь</b>" if i == cur else ""
-        lines.append(f"{e('r' + str(i))} <b>{n}</b> — от {num(need)}{mark}")
+        lines.append(f"{e('r' + str(i))} <b>{n}</b>: от {num(need)}{mark}")
     return "\n".join(lines)
 
 
@@ -267,7 +267,7 @@ def chat_view():
         f"{e('history')} Всё время: <b>{num(a[0])}</b> сообщ. · {num(a[1])} {e('users')}",
     ]
     if ph and ph[1]:
-        lines.append(f"{e('zap')} Пик недели: <b>{ph[0]:02d}:00–{(ph[0] + 1) % 24:02d}:00</b> МСК")
+        lines.append(f"{e('zap')} Пик недели: <b>{ph[0]:02d}:00-{(ph[0] + 1) % 24:02d}:00</b> МСК")
     if rd and rd[1]:
         lines.append(f"{e('rocket')} Рекорд дня: <b>{num(rd[1])}</b> · {stats.fmt_day(rd[0])}")
     hours = stats.day_key(stats.today())
@@ -283,22 +283,20 @@ def chat_view():
 
 def help_view():
     return "\n".join([
-        f"{e('patrol')} <b>ManhwPatrol</b> — патруль активности чата",
+        f"{e('patrol')} <b>ManhwPatrol</b>",
         LINE,
-        f"Я считаю, кто сколько пишет в @{CHAT_USERNAME}, и каждую неделю определяю "
-        f"самых активных — топ-3 получают <b>алмазы {e('diamond')} и крутки {e('attempts')}</b> в "
-        f"@{MANHWCARD_USERNAME}.",
+        f"Я считаю сообщения в @{CHAT_USERNAME}. Каждую неделю трое самых активных получают "
+        f"<b>алмазы {e('diamond')} и крутки {e('attempts')}</b> в @{MANHWCARD_USERNAME}.",
         "",
         f"{e('star')} <b>Команды</b>",
-        "/top — топ: сегодня, неделя, месяц, всё время",
-        "/me — мой профиль (ответом на сообщение — чужой)",
-        "/prizes — призы и сколько до итогов",
-        "/winners — зал славы прошлых недель",
-        "/ranks — звания патруля",
-        "/chatstats — статистика чата",
+        "/top - топ за день, неделю, месяц и всё время",
+        "/me - твой профиль (ответом на сообщение покажет чужой)",
+        "/prizes - призы и время до итогов",
+        "/winners - победители прошлых недель",
+        "/ranks - звания",
+        "/chatstats - статистика чата",
         "",
-        f"{e('shield')} <b>Честная игра</b>",
-        "<blockquote>Засчитываются нормальные сообщения. Флуд чаще пары секунд, "
-        "повторы, «ааааа», пересылки и команды — не считаются. "
-        "За накрутку — исключение из топа.</blockquote>",
+        f"{e('shield')} <b>Что не считается</b>",
+        "<blockquote>Флуд, повторы одного и того же, «ааааа», пересылки и команды. "
+        "Накрутчиков убираем из топа.</blockquote>",
     ])
